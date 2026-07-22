@@ -1,0 +1,9 @@
+# Core deps for the reversible probe and (later) the edit/convert stages.
+# torch is installed separately by scripts/setup_env.sh from the TheRock gfx1151 index
+# (or the CPU index) because its wheel source is not PyPI.
+transformers>=5.14
+safetensors>=0.4.5
+accelerate>=1.2
+huggingface_hub>=0.34
+numpy>=1.26
+tqdm>=4.66
