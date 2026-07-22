@@ -9,8 +9,10 @@ quantize), and reads three axes on held-out prompts:
   3. collateral        - over-refusal on legitimate security/coding lookalikes
 
 Emits a verdict and saves the run JSON. Thresholds are lexical proxies; a real decision
-should add a semantic judge and a coding eval (see docs/RUNBOOK.md). Nothing here is
-irreversible: on a bad verdict you have spent ~an hour of forward passes, not a shard.
+should add a semantic judge and a coding eval (see docs/RUNBOOK.md). The point of running
+this first is cost, not recoverability: the hook mutates no weight and writes no artifact,
+so a bad verdict costs ~an hour of forward passes instead of the hours of edit, F16
+conversion, imatrix, and Q4 quantize that stage 2/3 spend to produce ~300 GB of files.
 
 Usage:
   .venv/bin/python -m laguna_abliterate.probe --model-dir models/Laguna-S-2.1 \\

@@ -63,6 +63,13 @@ down-projections, shard-at-a-time:
   ratio via `projection.residual_removal_norm`, unchanged hashes on every non-target tensor),
   then atomic rename and update a manifest. Keep source + edited BF16 until validation
   (fits: 438 GiB of 641 GiB free).
+- Reversibility: this edit is recoverable, not destructive. The projection itself is a
+  lossy matrix operation (you cannot invert `I - U U^T` from the result alone), but the
+  workflow is fully reversible two ways: (a) the pristine source stays on disk and is
+  re-downloadable from HF, and (b) the manifest saves U, lambda, and the per-target
+  `U^T W` coefficients (tiny, k x in_features), so `W = W' + lambda * U (U^T W)`
+  reconstructs the original weights bit-for-bit. Never edit shards in place without the
+  manifest.
 - Gate: the reloaded edited model must reproduce the reversible hook's behavior within BF16
   tolerance. If it disagrees, do not ship.
 
