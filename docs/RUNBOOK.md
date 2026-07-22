@@ -35,6 +35,23 @@ Confirmed on the Radeon 8060S: bf16 matmul rel-err 2.8e-3, bf16 attention rel-er
 no NaN. The probe runs the same check automatically and drops to a CPU device_map if a
 future build breaks bf16.
 
+### iGPU memory (GTT) and the load path
+
+Measured: torch reports the iGPU as 116 GiB total, but only ~8 GiB is actually allocatable
+at model-load time (the amdgpu GTT/TTM cap on unified memory). accelerate's full-model load
+does a single ~10 GiB contiguous warmup allocation, which OOMs against that cap
+(`expandable_segments` does not help a hard limit). Two ways to run:
+
+1. Raise GTT once (host, one reboot). Append to the kernel cmdline and reboot:
+   `amd_iommu=off amdgpu.gttsize=131072 ttm.pages_limit=33554432`
+   Then the iGPU can hold ~100 GiB and the accelerate-offload reference engine loads
+   directly. Fast, reuses the proven reference forward, but needs a host boot-time change.
+
+2. No host change: the layer-streaming executor (`streaming.py`) never loads the whole
+   model. It keeps one decoder layer (~5 GiB) on the iGPU at a time, which fits the current
+   ~8 GiB cap, and reads each shard once. This is the default path for the probe on an
+   untuned box.
+
 ## 1. Reversible go/no-go (built)
 
 The one question this answers: is the refusal direction removable cleanly, or does removing
