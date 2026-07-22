@@ -187,11 +187,17 @@ class StreamingLaguna:
         return {l: torch.cat(caps[l], 0) for l in capture_layers}
 
     def render(self, prompt: str, enable_thinking: bool = False):
-        """Tokenize a user prompt through the real chat template, ready for prefill."""
-        return self.tok.apply_chat_template(
+        """Tokenize a user prompt through the real chat template, ready for prefill.
+
+        Returns the input_ids tensor [1, seq] (apply_chat_template can return a BatchEncoding,
+        so force return_dict and index input_ids).
+        """
+        enc = self.tok.apply_chat_template(
             [{"role": "user", "content": prompt}],
-            add_generation_prompt=True, enable_thinking=enable_thinking, return_tensors="pt",
+            add_generation_prompt=True, enable_thinking=enable_thinking,
+            return_tensors="pt", return_dict=True,
         )
+        return enc["input_ids"]
 
     @torch.no_grad()
     def run_corpus(self, input_ids_list, capture_layers=None, ablation=None, verbose: bool = True):
