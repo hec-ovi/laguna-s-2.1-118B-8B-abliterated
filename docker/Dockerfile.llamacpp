@@ -1,0 +1,22 @@
+# llama.cpp for the GGUF stage (convert edited BF16 -> F16, imatrix, quantize Q4_K_M).
+# Based on the abliterate image so the torch/transformers/safetensors that
+# convert_hf_to_gguf.py needs are already present; adds the llama.cpp build + gguf.
+# Upstream llama.cpp master carries native Laguna support (merged 2026-07-22); if a build
+# lacks it, swap the clone URL for https://github.com/poolsideai/llama.cpp.
+FROM laguna-abliterate:rocm
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      git build-essential cmake libcurl4-openssl-dev libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG LLAMA_REPO=https://github.com/ggml-org/llama.cpp
+RUN git clone --depth 1 "${LLAMA_REPO}" /llama.cpp \
+    && cmake -S /llama.cpp -B /llama.cpp/build -DGGML_NATIVE=ON -DLLAMA_CURL=OFF \
+    && cmake --build /llama.cpp/build -j "$(nproc)" --config Release \
+    && ls /llama.cpp/build/bin/llama-quantize /llama.cpp/build/bin/llama-imatrix
+
+RUN /opt/venv/bin/pip install --no-cache-dir gguf sentencepiece protobuf
+
+ENV PATH=/llama.cpp/build/bin:/opt/venv/bin:$PATH
+WORKDIR /work
