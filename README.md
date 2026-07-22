@@ -6,9 +6,10 @@ custom `laguna` MoE, OpenMDW), targeted at running on an AMD Strix Halo box
 
 The plan is deliberately staged so the cheap diagnostic runs before the expensive,
 artifact-producing edit. Nothing in the pipeline is unrecoverable: the pristine 219 GiB
-checkpoint stays on disk (and is re-downloadable from HF), and the permanent edit is a
-saved rank-k delta that can be added back for a bit-exact restore. "Cheap first" is about
-compute and disk, not about losing the model.
+checkpoint stays on disk (and is re-downloadable from HF), so any edit can be discarded
+and the exact original restored. The edit also writes a manifest (a saved rank-k delta):
+auditable, and enough to reconstruct the original to within bf16 rounding without the
+source. "Cheap first" is about compute and disk, not about losing the model.
 
 1. **Reversible probe** (`probe`): measure the refusal direction from matched
    harmful/benign activations, project it out of the residual stream at inference with a

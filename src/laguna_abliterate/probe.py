@@ -83,6 +83,14 @@ def main():
     ablate_layers = list(range(a.ablate_from, arch.N_LAYERS))
     ab = Ablation(U=U, layers=ablate_layers, lam=a.lam)
 
+    # persist the direction so stage 2 (edit.py) can bake the same U permanently
+    import torch
+    dir_path = (a.out[:-5] + "_dir.pt") if (a.out and a.out.endswith(".json")) \
+        else f"runs/dir_L{best}_lam{a.lam}_{int(time.time())}.pt"
+    os.makedirs(os.path.dirname(dir_path), exist_ok=True)
+    torch.save({"U": U, "best_layer": best, "ablate_layers": ablate_layers, "lambda": a.lam}, dir_path)
+    print(f"[probe] saved direction -> {dir_path} (feed to edit.py --direction after a clean verdict)")
+
     print(f"[probe] evaluating base vs ablated (lambda={a.lam}, ablate layers {a.ablate_from}..{arch.N_LAYERS - 1})")
     base_harm = scoring.refusal_rate(runner.generate(h_test, None, a.max_new_tokens, a.batch_size))
     abl_harm = scoring.refusal_rate(runner.generate(h_test, ab, a.max_new_tokens, a.batch_size))
@@ -114,6 +122,7 @@ def main():
         "model_dir": a.model_dir,
         "thinking": a.thinking,
         "best_layer": best,
+        "direction_file": dir_path,
         "layer_scores": scores,
         "lambda": a.lam,
         "ablate_layers": [a.ablate_from, arch.N_LAYERS - 1],
