@@ -36,13 +36,14 @@ def _rmsnorm(x: torch.Tensor, w: torch.Tensor, eps: float = arch.RMS_NORM_EPS) -
 
 class StreamingLaguna:
     def __init__(self, model_dir: str, device: str = "cuda", dtype: torch.dtype = torch.bfloat16):
-        from transformers import AutoConfig, AutoModelForCausalLM
+        from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
         from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
 
         self.device = device
         self.dtype = dtype
         self.ckpt = W.ShardedCheckpoint(model_dir)
         self.config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+        self.tok = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
 
         with torch.device("meta"):
             self.model = AutoModelForCausalLM.from_config(self.config, trust_remote_code=True)
@@ -184,6 +185,53 @@ class StreamingLaguna:
             if verbose:
                 print(f"[streaming] layer {i:2d}/{arch.N_LAYERS - 1}  {time.time() - t0:6.1f}s", flush=True)
         return {l: torch.cat(caps[l], 0) for l in capture_layers}
+
+    def render(self, prompt: str, enable_thinking: bool = False):
+        """Tokenize a user prompt through the real chat template, ready for prefill."""
+        return self.tok.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            add_generation_prompt=True, enable_thinking=enable_thinking, return_tensors="pt",
+        )
+
+    @torch.no_grad()
+    def run_corpus(self, input_ids_list, capture_layers=None, ablation=None, verbose: bool = True):
+        """Layer-major over the corpus; returns (first_token_logits, caps).
+
+        first_token_logits: list of [vocab] cpu tensors (the next-token logits at the end of
+        each prompt). caps: {layer: [n_prompts, d_model]} residuals at the last token.
+        ablation=(U, lam, from_layer) projects span(U) out of the residual after every layer
+        >= from_layer (the reversible intervention; no weight is edited). One weight pass.
+        """
+        import time
+        from .projection import project_out_residual
+
+        want = set(capture_layers or [])
+        U = None
+        if ablation is not None:
+            U, lam, from_layer = ablation
+            U = U.to(self.device)
+        states = [list(self._prep(ids.to(self.device))) for ids in input_ids_list]
+        caps: dict[int, list] = {l: [] for l in (capture_layers or [])}
+        t0 = time.time()
+        for i in range(arch.N_LAYERS):
+            layer = self.lm.layers[i]
+            layer.load_state_dict(self._layer_state_dict(i), strict=True, assign=True)
+            typ = layer.attention_type
+            for st in states:
+                h = layer(st[0], attention_mask=st[2][typ], position_ids=st[1],
+                          position_embeddings=st[3][typ], use_cache=False)
+                if U is not None and i >= from_layer:
+                    h = project_out_residual(h, U, lam)
+                st[0] = h
+                if i in want:
+                    caps[i].append(h[:, -1, :].float().cpu())
+            self._free_layer(layer)
+            if verbose:
+                print(f"[streaming] layer {i:2d}/{arch.N_LAYERS - 1}  {time.time() - t0:6.1f}s", flush=True)
+        logits = [F.linear(_rmsnorm(st[0], self.norm_w)[:, -1, :], self.lm_head).float().cpu().squeeze(0)
+                  for st in states]
+        caps = {l: torch.cat(caps[l], 0) for l in (capture_layers or [])}
+        return logits, caps
 
 
 def _main():

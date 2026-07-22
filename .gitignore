@@ -29,3 +29,6 @@ vendor/laguna/model.safetensors.index.json
 
 # transformers cache (in-container)
 .hf/
+
+# fetched eval sets (AdvBench/Alpaca derived)
+data/*.jsonl
