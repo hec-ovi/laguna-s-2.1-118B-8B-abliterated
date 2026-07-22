@@ -4,18 +4,23 @@ End-to-end plan for abliterating Laguna-S-2.1 on Strix Halo. Stage 1 (the revers
 go/no-go) is built and runnable once the venv and weights are in place. Stages 2 and 3
 are specified here and built next, gated on a clean stage-1 verdict.
 
-## 0. Environment (once)
+## 0. Environment (once) - Docker, no host python
+
+The BF16 checkpoint is already local at `/home/hec/models/hf/Laguna-S-2.1-bf16` (do not
+re-download). Everything runs in a container; nothing is installed on the host.
 
 ```
-scripts/setup_env.sh            # python 3.12 venv + torch (TheRock gfx1151) + deps + tests
-scripts/setup_env.sh --cpu      # CPU-only fallback (Zen5 AVX512-BF16), no ROCm needed
-scripts/download_model.sh       # ~219 GiB BF16 checkpoint -> models/Laguna-S-2.1
+scripts/docker_build.sh                    # laguna-abliterate:rocm (TheRock gfx1151 torch)
+scripts/docker_build.sh cpu                # CPU fallback image, no ROCm
+scripts/docker_run.sh                      # torch/ROCm smoke test
+scripts/docker_run.sh python -m unittest discover -s tests -q   # contract tests in-image
 ```
 
-The system python is 3.14, ahead of the torch wheels, so the venv is built on 3.12. ROCm
-runs on gfx1151 via the TheRock nightly (7.13-7.15 line); Vulkan is the stable llama.cpp
-backend used later for imatrix and serving. 219 GiB does not fit 123 GiB RAM, so the model
-is loaded with accelerate offload (iGPU + RAM + NVMe) for the probe.
+The image bundles python 3.12 + TheRock native gfx1151 torch (the host python is 3.14,
+ahead of the wheels, which is why this is containerized). `docker_run.sh` passes /dev/kfd
+and /dev/dri, mounts the checkpoint read-only at `/model` and the repo at `/work`. 219 GiB
+does not fit 123 GiB RAM, so the model loads with accelerate offload (iGPU + RAM + NVMe).
+Vulkan is the stable llama.cpp backend used later for imatrix and serving.
 
 ## 1. Reversible go/no-go (built)
 
@@ -24,8 +29,8 @@ it drag capability with it. No weight is edited, nothing is converted or quantiz
 verdict is bad you have spent about an hour of forward passes, not a shard.
 
 ```
-.venv/bin/python -m laguna_abliterate.probe \
-  --model-dir models/Laguna-S-2.1 \
+scripts/docker_run.sh python -m laguna_abliterate.probe \
+  --model-dir /model \
   --candidate-layers 12,16,20,24,28,32 \
   --lambda 1.0 --max-ram 88GiB --gpu-mem 20GiB \
   --harmful-file data/harmful.jsonl        # plug a real eval set (AdvBench/StrongREJECT)

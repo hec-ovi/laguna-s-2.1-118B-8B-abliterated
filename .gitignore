@@ -26,3 +26,6 @@ runs/
 
 # vendored upstream weight index is large; keep the code, drop the big index
 vendor/laguna/model.safetensors.index.json
+
+# transformers cache (in-container)
+.hf/
