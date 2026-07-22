@@ -4,6 +4,9 @@
 # raw idea (persisted locally, not published)
 docs/IDEA.md
 
+# logs
+*.log
+
 # python
 .venv/
 __pycache__/
