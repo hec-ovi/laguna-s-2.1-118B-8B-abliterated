@@ -151,6 +151,41 @@ class StreamingLaguna:
         return logits, caps
 
 
+    @torch.no_grad()
+    def capture_corpus(self, input_ids_list, capture_layers, verbose: bool = True):
+        """Layer-major over the WHOLE corpus: load each layer once, run every prompt through it.
+
+        Total weight reads = one pass for the entire calibration set, not one per prompt. This
+        is the design that makes activation capture practical on a box that cannot hold the
+        model resident. Per-prompt hidden states stay on-device between layers (tiny: a few
+        hundred MB for hundreds of short prompts). Returns {layer: [n_prompts, d_model]} at the
+        last token.
+        """
+        import time
+
+        want = set(capture_layers)
+        states = []
+        for ids in input_ids_list:
+            h, pos, masks, pes = self._prep(ids.to(self.device))
+            states.append((h, pos, masks, pes))
+        caps: dict[int, list] = {l: [] for l in capture_layers}
+        t0 = time.time()
+        for i in range(arch.N_LAYERS):
+            layer = self.lm.layers[i]
+            layer.load_state_dict(self._layer_state_dict(i), strict=True, assign=True)
+            typ = layer.attention_type
+            for j, (h, pos, masks, pes) in enumerate(states):
+                h = layer(h, attention_mask=masks[typ], position_ids=pos,
+                          position_embeddings=pes[typ], use_cache=False)
+                states[j] = (h, pos, masks, pes)
+                if i in want:
+                    caps[i].append(h[:, -1, :].float().cpu())
+            self._free_layer(layer)
+            if verbose:
+                print(f"[streaming] layer {i:2d}/{arch.N_LAYERS - 1}  {time.time() - t0:6.1f}s", flush=True)
+        return {l: torch.cat(caps[l], 0) for l in capture_layers}
+
+
 def _main():
     import argparse
 
