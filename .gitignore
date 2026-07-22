@@ -1,0 +1,25 @@
+# local research notes (persisted, not published)
+.research/
+
+# raw idea (persisted locally, not published)
+docs/IDEA.md
+
+# python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# model artifacts and large data (never commit weights)
+models/
+weights/
+*.safetensors
+*.gguf
+*.imatrix
+offload/
+artifacts/
+runs/
+
+# vendored upstream weight index is large; keep the code, drop the big index
+vendor/laguna/model.safetensors.index.json
