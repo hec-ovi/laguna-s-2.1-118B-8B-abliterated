@@ -24,7 +24,15 @@ RUN pip install ${TORCH_PRE} torch torchvision torchaudio --index-url "${TORCH_I
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt
 
-# TheRock native gfx1151 wheels need no HSA_OVERRIDE_GFX_VERSION.
+# ROCm SDK + torch runtime libs the minimal base image lacks
+# (libatomic.so.1, libgomp.so.1 OpenMP, libnuma, libgfortran for rocBLAS/rocSOLVER).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libatomic1 libnuma1 libgomp1 libgfortran5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# gfx1151: documented ~19x SDPA speedup (ROCm issue #6034). Native wheels need no HSA override.
+# TheRock torch resolves to rocm7.13.0a20260411 (newest cp312-linux wheel; 7.14 is Windows-only, no 7.15).
+ENV TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ENV PYTHONPATH=/work/src
 ENV HF_HOME=/work/.hf
 WORKDIR /work

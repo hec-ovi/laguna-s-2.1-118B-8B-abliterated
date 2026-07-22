@@ -63,7 +63,12 @@ def main():
 
     max_memory = {"cpu": a.max_ram}
     if a.gpu_mem:
-        max_memory[0] = a.gpu_mem
+        from .preflight import check
+        if check("cuda"):
+            max_memory[0] = a.gpu_mem
+        else:
+            print("[probe] bf16 iGPU self-check FAILED -> CPU-only device_map "
+                  "(avoids ROCm #6034-class silent corruption on this build)")
 
     print(f"[probe] loading {a.model_dir} (thinking={a.thinking}, max_memory={max_memory})")
     runner = LagunaRunner(RunnerConfig(

@@ -22,6 +22,19 @@ and /dev/dri, mounts the checkpoint read-only at `/model` and the repo at `/work
 does not fit 123 GiB RAM, so the model loads with accelerate offload (iGPU + RAM + NVMe).
 Vulkan is the stable llama.cpp backend used later for imatrix and serving.
 
+ROCm version: the image bundles TheRock torch `2.12.0a0+rocm7.13.0a20260411`, the newest
+gfx1151 Linux wheel. 7.14 is Windows-only, 7.15 does not exist, and Python 3.13 would
+regress to the January `7.11` build that carries the bf16 NaN bugs (ROCm issue #6034). bf16
+is not assumed correct, it is verified on this rig by a self-check (run once):
+
+```
+scripts/docker_run.sh python -m laguna_abliterate.preflight
+```
+
+Confirmed on the Radeon 8060S: bf16 matmul rel-err 2.8e-3, bf16 attention rel-err 3.5e-3,
+no NaN. The probe runs the same check automatically and drops to a CPU device_map if a
+future build breaks bf16.
+
 ## 1. Reversible go/no-go (built)
 
 The one question this answers: is the refusal direction removable cleanly, or does removing

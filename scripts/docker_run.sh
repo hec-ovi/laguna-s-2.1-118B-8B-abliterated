@@ -27,7 +27,8 @@ if [ "$MODE" = "rocm" ]; then
   DEV+=(--security-opt seccomp=unconfined)
 fi
 
-exec docker run --rm -it \
+TTY=""; [ -t 1 ] && TTY="-t"   # attach a tty only when interactive (safe in scripts/CI)
+exec docker run --rm -i $TTY \
   "${DEV[@]}" \
   --shm-size 16g --ipc host \
   -v "$REPO":/work \

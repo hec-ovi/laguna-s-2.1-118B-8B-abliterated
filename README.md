@@ -76,7 +76,8 @@ scripts/docker_run.sh python -m laguna_abliterate.probe --model-dir /model \
 - Core math + weight loader + prompt sets + scoring + tests: in this repo (25 tests pass).
 - Reversible probe engine + go/no-go CLI (stage 1): in this repo (accelerate-offload oracle).
 - Permanent BF16 shard editor + recoverable manifest (stage 2): in this repo.
-- Docker runtime (gfx1151, no host env): in this repo.
+- Docker runtime (gfx1151, no host env): built; torch 2.12.0a0+rocm7.13, bf16 verified
+  on the iGPU (Radeon 8060S) by the preflight self-check.
 - GGUF convert / imatrix / quantize (stage 3): next.
 
 License note: this repo is tooling. Laguna-S-2.1 weights are OpenMDW and already local at
