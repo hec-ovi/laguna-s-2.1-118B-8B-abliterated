@@ -52,7 +52,8 @@ def _copy_sidecars(source_dir: str, out_dir: str) -> None:
             shutil.copy2(src, os.path.join(out_dir, name))
 
 
-def edit(source_dir: str, out_dir: str, direction_file: str, lam: float, policy: str) -> M.EditManifest:
+def edit(source_dir: str, out_dir: str, direction_file: str, lam: float, policy: str,
+         projection: str = "norm-preserving") -> M.EditManifest:
     from safetensors import safe_open
     from safetensors.torch import save_file
 
@@ -60,6 +61,7 @@ def edit(source_dir: str, out_dir: str, direction_file: str, lam: float, policy:
     payload = torch.load(direction_file, map_location="cpu")
     U = payload["U"].to(torch.float32)              # [d_model, k]
     assert U.shape[0] == arch.HIDDEN, U.shape
+    proj_fn = P.ablate_weight_left_norm_preserving if projection == "norm-preserving" else P.ablate_weight_left
 
     targets = _policy_targets(policy)
     expected = arch.EXPECTED_FFN_DOWNS + (arch.EXPECTED_O_PROJ if policy.endswith("o_proj") else 0)
@@ -81,6 +83,7 @@ def edit(source_dir: str, out_dir: str, direction_file: str, lam: float, policy:
         expected_target_count=expected,
         created=time.strftime("%Y-%m-%dT%H:%M:%S"),
         dependency_versions={"torch": torch.__version__},
+        projection=projection,
     )
     coeffs: dict[str, torch.Tensor] = {}
 
@@ -98,8 +101,8 @@ def edit(source_dir: str, out_dir: str, direction_file: str, lam: float, policy:
                 t = f.get_tensor(name)
                 if name in target_set:
                     Wf = t.to(torch.float32)
-                    coeffs[name] = (U.transpose(0, 1) @ Wf).contiguous()  # [k, in], for restore
-                    edited = P.ablate_weight_left(t, U, lam)
+                    coeffs[name] = (U.transpose(0, 1) @ Wf).contiguous()  # [k, in], for restore (left only)
+                    edited = proj_fn(t, U, lam)
                     rec.removal_ratios[name] = P.residual_removal_norm(t, edited, U)
                     rec.targets.append(name)
                     tensors[name] = edited.contiguous()
@@ -162,6 +165,12 @@ def restore(edited_dir: str, out_dir: str) -> None:
     from safetensors.torch import save_file
 
     man = M.EditManifest.load(os.path.join(edited_dir, "edit_manifest.json"))
+    if man.projection != "left":
+        raise SystemExit(
+            f"coeff-restore is only valid for projection='left'; this edit used "
+            f"'{man.projection}' (norm-preserving rescales columns, breaking W = W' + U(U^T W)). "
+            f"Restore from the pristine source at {man.source_dir} (the guaranteed bit-exact restore)."
+        )
     U = torch.load(man.direction_file, map_location="cpu")["U"].to(torch.float32)
     coeffs = torch.load(man.coeff_file, map_location="cpu")
     os.makedirs(out_dir, exist_ok=True)
@@ -190,6 +199,7 @@ def main():
     e.add_argument("--direction", required=True)
     e.add_argument("--lambda", dest="lam", type=float, default=1.0)
     e.add_argument("--policy", default="ffn_down", choices=["ffn_down", "ffn_down+o_proj"])
+    e.add_argument("--projection", default="norm-preserving", choices=["norm-preserving", "left"])
     v = sub.add_parser("verify")
     v.add_argument("--edited", required=True)
     r = sub.add_parser("restore")
@@ -198,7 +208,7 @@ def main():
     a = ap.parse_args()
 
     if a.cmd == "edit":
-        edit(a.source, a.out, a.direction, a.lam, a.policy)
+        edit(a.source, a.out, a.direction, a.lam, a.policy, a.projection)
     elif a.cmd == "verify":
         verify(a.edited)
     elif a.cmd == "restore":

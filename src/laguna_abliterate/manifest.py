@@ -54,6 +54,7 @@ class EditManifest:
     shards: list[ShardRecord] = field(default_factory=list)
     created: str = ""
     dependency_versions: dict[str, str] = field(default_factory=dict)
+    projection: str = "norm-preserving"  # "norm-preserving" | "left"; coeff-restore valid only for "left"
 
     def to_json(self) -> str:
         return json.dumps(dataclasses.asdict(self), indent=2, sort_keys=True)

@@ -88,6 +88,31 @@ def ablate_weight_left(W: torch.Tensor, U: torch.Tensor, lam: float = 1.0) -> to
     return Wf.to(dtype)
 
 
+def ablate_weight_left_norm_preserving(W: torch.Tensor, U: torch.Tensor, lam: float = 1.0) -> torch.Tensor:
+    """Norm-preserving (biprojected) edit: remove span(U) from the output, keep column magnitudes.
+
+    Plain ``ablate_weight_left`` projects each column (a d_model output vector) onto the
+    orthogonal complement of U, which shrinks its norm. That shrink is what the model's
+    RMSNorm layers were NOT trained to expect and is a source of capability damage. Here we
+    project, then rescale each column back to its ORIGINAL norm:
+
+        W' = (I - lam U U^T) W ; then  W'[:, j] *= ||W[:, j]|| / ||W'[:, j]||
+
+    Rescaling a vector already orthogonal to U keeps it orthogonal (the direction stays
+    removed: U^T W' == 0), while restoring the per-input-neuron output magnitude the
+    normalization layers expect. This is the grimjim/Jim Lai norm-preserving biprojected
+    variant used on gpt-oss-120b. Preferred for the permanent edit to minimize capability loss.
+    """
+    dtype = W.dtype
+    Wf = W.to(torch.float32)
+    Uf = U.to(torch.float32)
+    Wp = Wf - lam * (Uf @ (Uf.transpose(-1, -2) @ Wf))
+    orig = Wf.norm(dim=0, keepdim=True)                  # [1, in] original column norms
+    new = Wp.norm(dim=0, keepdim=True).clamp_min(1e-12)  # projected column norms
+    Wp = Wp * (orig / new)
+    return Wp.to(dtype)
+
+
 def ablate_weight_input(W: torch.Tensor, U: torch.Tensor, lam: float = 1.0) -> torch.Tensor:
     """Input-insensitivity edit (STRONGER, NOT used in the conservative pass): W' = W - lam (W U) U^T.
 

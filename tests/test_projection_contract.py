@@ -68,6 +68,19 @@ def ablate_weight_input(W, U):
     return _sub(W, matmul(matmul(W, U), Ut))
 
 
+def ablate_weight_left_norm_preserving(W, U):
+    # left-project then rescale each column back to its original norm
+    Wp = ablate_weight_left(W, U)
+    nrows, ncols = len(W), len(W[0])
+    for j in range(ncols):
+        o = norm([W[i][j] for i in range(nrows)])
+        n = norm([Wp[i][j] for i in range(nrows)]) + 1e-12
+        s = o / n
+        for i in range(nrows):
+            Wp[i][j] *= s
+    return Wp
+
+
 def project_out_residual(h_rows, U):
     # h_rows [n, d_model], U [d_model, k] -> h - (h U) U^T
     Ut = transpose(U)
@@ -116,6 +129,14 @@ class ProjectionContract(unittest.TestCase):
         diff = sum(abs(a - b) for ra, rb in zip(left, inp) for a, b in zip(ra, rb))
         self.assertGreater(diff, 1e-6)
 
+    def test_norm_preserving_removes_direction_and_keeps_column_norms(self):
+        Wp = ablate_weight_left_norm_preserving(self.W, self.U)
+        for j in range(IN):
+            # direction still removed (rescaling an orthogonal vector stays orthogonal)
+            self.assertAlmostEqual(dot(self.d, col(Wp, j)), 0.0, places=8)
+            # per-column magnitude restored to the original (the "not dumber" property)
+            self.assertAlmostEqual(norm(col(Wp, j)), norm(col(self.W, j)), places=7)
+
     def test_removal_norm_ratio_near_zero(self):
         Wp = ablate_weight_left(self.W, self.U)
         Ut = transpose(self.U)
@@ -134,8 +155,10 @@ class ProjectionContract(unittest.TestCase):
         H = torch.tensor(self.H, dtype=torch.float32)
         ref_W = torch.tensor(ablate_weight_left(self.W, self.U), dtype=torch.float32)
         ref_H = torch.tensor(project_out_residual(self.H, self.U), dtype=torch.float32)
+        ref_NP = torch.tensor(ablate_weight_left_norm_preserving(self.W, self.U), dtype=torch.float32)
         self.assertTrue(torch.allclose(P.ablate_weight_left(W, U), ref_W, atol=1e-5))
         self.assertTrue(torch.allclose(P.project_out_residual(H, U), ref_H, atol=1e-5))
+        self.assertTrue(torch.allclose(P.ablate_weight_left_norm_preserving(W, U), ref_NP, atol=1e-4))
 
 
 if __name__ == "__main__":
