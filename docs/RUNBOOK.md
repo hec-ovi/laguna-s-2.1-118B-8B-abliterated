@@ -140,3 +140,29 @@ Full abliterate-to-BF16 then Q4_K_M is about 2.5-3.5h realistic (1-6h range). Th
 prefill-bound stages (activation harvest, imatrix) dominate; edit, convert, and quantize are
 each under an hour, gated by NVMe write. Measured Laguna Q4 on this box: prefill 293->196
 tok/s, decode 22.7->19.5 tok/s (Vulkan).
+
+## Acceptance gates (from research; all must pass before shipping the edit)
+
+Goal is reduced over-refusal + kept/gained capability (not jailbreak, not dumber, not reckless).
+The first-token probe only SELECTS a direction; acceptance requires long-generation eval on the
+edited model (base-Q4 vs abliterated-Q4, via the llama-vulkan-strix server), thinking-on AND off.
+
+1. Over-refusal removed (the target): XSTest-safe, OR-Bench-Hard, CyberSecEval false-refusal,
+   plus a coding-defensive set. Want a large drop in false refusals on legitimate requests.
+2. Coding + agent capability KEPT (the "not dumber / smarter" gate, per the user, load-bearing):
+   - unit-test pass rate (HumanEval / MBPP style), patch correctness (SWE-style repo repair),
+   - tool-call schema validity, long-horizon / Terminal-Bench-style completion,
+   - measured thinking-on AND thinking-off (Laguna's agentic mode is thinking-on).
+   Red flag: >2-3pp adjusted drop on held-out coding tasks.
+3. Off-target disposition (the reckless-agent risk, arXiv 2607.17427): on non-refusal prompts,
+   check confidence/uncertainty calibration, destructive-action rate, tool calls without
+   confirmation, "assumed tests passed" claims, overthinking. Abliteration can make an agent
+   overconfident; that is the opposite of smarter and must be caught.
+4. Fidelity: benign first-token/full KL < 0.01 (Heretic-scale); MMLU/GSM8K (empty-adjusted) within
+   2-3pp; no removal of legitimate "missing info / cannot verify" epistemic refusals.
+5. MoE stability: router top-10 overlap, router-logit KL, expert-load entropy, and shared-vs-routed
+   contribution before/after; a low benign KL can hide categorical routing changes.
+
+Judge protocol (anti-cheat): >=100-token greedy generations + LLM judge, not keyword/first-token
+(the "3/100 re-tested as 60/100" failure). Attention o_proj held back; norm-preserving projection
+on the expert down_projs; measure per-component (expert edits are more damaging than attention).
